@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Schedule Dashboard</title>
+
+<!-- Google Font -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+<!-- FullCalendar -->
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Poppins', sans-serif;
+}
+
+body {
+  background: linear-gradient(135deg, #1e3c72, #2a5298);
+  color: white;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.container {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 20px;
+}
+
+.card {
+  background: rgba(255,255,255,0.1);
+  backdrop-filter: blur(15px);
+  padding: 20px;
+  border-radius: 15px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+
+h2 {
+  margin-bottom: 15px;
+}
+
+input, button, select {
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  margin: 5px 0;
+  width: 100%;
+}
+
+button {
+  background: #00c6ff;
+  color: white;
+  cursor: pointer;
+  transition: 0.3s;
+  font-weight: bold;
+}
+
+button:hover {
+  background: #0072ff;
+}
+
+#calendar {
+  background: white;
+  color: black;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.dashboard-metrics {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.metric {
+  text-align: center;
+}
+
+.metric span {
+  font-size: 22px;
+  font-weight: bold;
+}
+
+canvas {
+  background: white;
+  border-radius: 10px;
+  padding: 10px;
+}
+</style>
+</head>
+<body>
+
+<h1>📊 Smart Schedule Dashboard</h1>
+
+<div class="container">
+
+  <!-- LEFT SIDE -->
+  <div class="card">
+    <h2>Add Task</h2>
+    <input type="text" id="taskTitle" placeholder="Task Title">
+    <input type="date" id="taskDate">
+    <select id="taskType">
+      <option value="daily">Daily Task</option>
+      <option value="long">Long Term Goal</option>
+      <option value="meeting">Meeting</option>
+    </select>
+    <button onclick="addTask()">Add Task</button>
+
+    <h2 style="margin-top:20px;">Today's Tasks</h2>
+    <div id="todayTasks"></div>
+  </div>
+
+  <!-- RIGHT SIDE -->
+  <div class="card">
+    <div class="dashboard-metrics">
+      <div class="metric">
+        Weekly<br><span id="weeklyScore">0%</span>
+      </div>
+      <div class="metric">
+        Monthly<br><span id="monthlyScore">0%</span>
+      </div>
+      <div class="metric">
+        Yearly<br><span id="yearlyScore">0%</span>
+      </div>
+    </div>
+
+    <canvas id="accuracyChart"></canvas>
+    <br>
+    <div id="calendar"></div>
+  </div>
+
+</div>
+
+<script>
+let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+
+function saveTasks() {
+  localStorage.setItem("tasks", JSON.stringify(tasks));
+}
+
+function addTask() {
+  const title = document.getElementById("taskTitle").value;
+  const date = document.getElementById("taskDate").value;
+  const type = document.getElementById("taskType").value;
+
+  if (!title || !date) return alert("Please fill all fields");
+
+  tasks.push({
+    id: Date.now(),
+    title,
+    date,
+    type,
+    completed: false
+  });
+
+  saveTasks();
+  renderCalendar();
+  renderTodayTasks();
+  calculateScores();
+}
+
+function toggleComplete(id) {
+  const task = tasks.find(t => t.id === id);
+  task.completed = !task.completed;
+  saveTasks();
+  renderTodayTasks();
+  calculateScores();
+}
+
+function renderTodayTasks() {
+  const today = new Date().toISOString().split("T")[0];
+  const container = document.getElementById("todayTasks");
+  container.innerHTML = "";
+
+  tasks.filter(t => t.date === today).forEach(task => {
+    const div = document.createElement("div");
+    div.innerHTML = `
+      <input type="checkbox" ${task.completed ? "checked" : ""} 
+      onchange="toggleComplete(${task.id})"> 
+      ${task.title}
+    `;
+    container.appendChild(div);
+  });
+}
+
+function calculateScores() {
+  const now = new Date();
+  const weekAgo = new Date();
+  weekAgo.setDate(now.getDate() - 7);
+
+  const monthAgo = new Date();
+  monthAgo.setMonth(now.getMonth() - 1);
+
+  const yearAgo = new Date();
+  yearAgo.setFullYear(now.getFullYear() - 1);
+
+  function calc(fromDate) {
+    const filtered = tasks.filter(t => new Date(t.date) >= fromDate);
+    if (filtered.length === 0) return 0;
+    const completed = filtered.filter(t => t.completed).length;
+    return Math.round((completed / filtered.length) * 100);
+  }
+
+  document.getElementById("weeklyScore").innerText = calc(weekAgo) + "%";
+  document.getElementById("monthlyScore").innerText = calc(monthAgo) + "%";
+  document.getElementById("yearlyScore").innerText = calc(yearAgo) + "%";
+
+  updateChart();
+}
+
+let chart;
+
+function updateChart() {
+  const weekly = parseInt(document.getElementById("weeklyScore").innerText);
+  const monthly = parseInt(document.getElementById("monthlyScore").innerText);
+  const yearly = parseInt(document.getElementById("yearlyScore").innerText);
+
+  if (chart) chart.destroy();
+
+  chart = new Chart(document.getElementById("accuracyChart"), {
+    type: "bar",
+    data: {
+      labels: ["Weekly", "Monthly", "Yearly"],
+      datasets: [{
+        label: "Accuracy %",
+        data: [weekly, monthly, yearly],
+        backgroundColor: ["#00c6ff", "#0072ff", "#6610f2"]
+      }]
+    },
+    options: {
+      scales: {
+        y: {
+          beginAtZero: true,
+          max: 100
+        }
+      }
+    }
+  });
+}
+
+let calendar;
+
+function renderCalendar() {
+  const calendarEl = document.getElementById('calendar');
+
+  if (calendar) calendar.destroy();
+
+  calendar = new FullCalendar.Calendar(calendarEl, {
+    initialView: 'dayGridMonth',
+    events: tasks.map(task => ({
+      title: task.title + (task.completed ? " ✔️" : ""),
+      start: task.date,
+      color: task.completed ? "green" : "#0072ff"
+    }))
+  });
+
+  calendar.render();
+}
+
+renderCalendar();
+renderTodayTasks();
+calculateScores();
+</script>
+
+</body>
+</html>
